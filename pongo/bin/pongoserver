@@ -1,0 +1,50 @@
+#!/usr/bin/env python
+import logging
+import argparse
+import multiprocessing
+import sys
+import os
+
+from logging.handlers import SysLogHandler
+from pongo.main import Main
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Pongo server')
+    parser.add_argument("-D","--debug",help="Enable debug output",default=False,action="store_true")
+    parser.add_argument("-P","--pidfile",help="Pid file location. (default=%(default)s)",default="/var/run/pongoserver/pongoserver.pid")
+    parser.add_argument("-L","--logging",help="Logging host:port or device. (default=%(default)s)",default="localhost:514")
+    group_mongo = parser.add_argument_group("Mongo settings")
+    group_mongo.add_argument("-H", "--host", help="Mongo server in host:port format (default=%(default)s)", default="localhost")
+    group_mongo.add_argument("-r","--replicaset",help="Replicaset name (default=%(default)s)",default="main")
+    group_mongo.add_argument("-d","--database",help="Database name (default=%(default)s)",default="blacklistdb")
+    group_mongo.add_argument("-c","--collection",help="Collection in database (default=%(default)s)",default="blacklist")
+    group_mongo.add_argument("-f","--key-field",help="Field containing the lookup key (default=%(default)s)",default="email")
+    group_mongo.add_argument("-s","--string",help="String to return when key is found in collection (default=%(default)s)",default="DISCARD")
+    group_daemon = parser.add_argument_group("Daemon settings")
+    group_daemon.add_argument("-i","--insecure",help="Allow runnin as root (default=%(default)s)",default=False,action="store_true")
+    group_daemon.add_argument("-n","--workers",help="Number of worker processes (default=%(default)s)",type=int,default=multiprocessing.cpu_count()*2)
+    group_daemon.add_argument("-l","--listen",help="IP or hostname to bind (default=%(default)s)",default="localhost")
+    group_daemon.add_argument("-p","--port",help="Port to listen for incoming requests (default=%(default)s)",type=int,default=8080)
+
+    args = parser.parse_args()
+    # Setup logging
+    if args.debug:
+        logging.basicConfig(level=logging.DEBUG)
+    else:
+        logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger()
+    if args.logging.startswith("/"):
+        syslog_handler = SysLogHandler(args.logging)
+    else:
+        try:
+            host,port = args.logging.split(":")
+            syslog_handler = SysLogHandler((host,int(port)))
+        except Exception,e:
+            print "Invalid logging arguments."
+            sys.exit(1)
+    syslog_handler.setFormatter(logging.Formatter(os.path.basename(sys.argv[0]) + " %(name)s %(levelname)s %(message)s"))
+    logger.addHandler(syslog_handler)
+    logging.info("Initializing Pongo server...")
+
+    main = Main(args)
+    main.run()
